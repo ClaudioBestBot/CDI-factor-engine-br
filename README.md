@@ -194,13 +194,18 @@ como primeiro vértice (taxa, data de referência e origem); não há busca
 automática de CDI.
 
 Quando informado, o CDI participa matematicamente da sequência de vértices em
-DU=0, com origem `cdi`, e a interpolação entre DU=0 e o primeiro DI1 usa o
-mesmo Flat Forward 252. Nesta versão, `cdi_reference_date` deve ser exatamente
-a data do snapshot e a origem não pode ser vazia; essa é uma restrição de
-auditabilidade desta versão, não uma regra financeira universal. Todos os
-contratos de uma construção devem declarar o mesmo `source_mode` solicitado.
-Os códigos são canônicos sem o prefixo `BMF:` (`DI1V26` e `BMF:DI1V26` são a
-mesma identidade); códigos manuais ausentes no snapshot são rejeitados.
+`DU=1` (não `DU=0`), com origem `cdi`, e a interpolação entre `DU=1` e o
+primeiro DI1 usa o mesmo Flat Forward 252. `DU=0` é apenas o fator-base
+implícito (`factor(taxa, 0) = (1 + taxa/100) ** (0/252) = 1` para qualquer
+taxa) e nunca é um vértice de taxa válido — consultar a curva em `DU=0`
+levanta erro explícito. O CDI é colocado em `DU=1` porque é o primeiro DU em
+que uma taxa anual pode matematicamente ter efeito, um dia útil após o
+snapshot. Nesta versão, `cdi_reference_date` deve ser exatamente a data do
+snapshot e a origem não pode ser vazia; essa é uma restrição de auditabilidade
+desta versão, não uma regra financeira universal. Todos os contratos de uma
+construção devem declarar o mesmo `source_mode` solicitado. Os códigos são
+canônicos sem o prefixo `BMF:` (`DI1V26` e `BMF:DI1V26` são a mesma
+identidade); códigos manuais ausentes no snapshot são rejeitados.
 
 A seleção de vértices é determinística: pode receber códigos manuais,
 códigos obrigatórios e limites explícitos de contratos negociados e negócios.

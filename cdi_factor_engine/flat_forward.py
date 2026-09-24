@@ -11,8 +11,8 @@ INTERNAL_PRECISION = 60
 def _validate_vertices(du_previous: int, du_next: int, rate_previous: Decimal, rate_next: Decimal) -> None:
     if du_previous >= du_next:
         raise ValueError("DU vertices must be strictly increasing")
-    if du_previous < 0 or du_next <= 0:
-        raise ValueError("DU vertices must be non-negative, with the next vertex positive")
+    if du_previous <= 0 or du_next <= 0:
+        raise ValueError("DU vertices must be positive")
     if rate_previous <= Decimal("-100") or rate_next <= Decimal("-100"):
         raise ValueError("annual rates must be greater than -100 percent")
 

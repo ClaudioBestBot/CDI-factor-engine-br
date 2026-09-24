@@ -60,6 +60,14 @@ class CDIReference:
     origin: str
 
 
+#: DU=0 is only the implicit unit base factor (``factor(rate, 0) == 1`` for
+#: any rate, so it can never carry an effective annual rate). The CDI vertex,
+#: when provided, is placed at DU=1 -- the first tradable business-day
+#: vertex, one business day after the snapshot -- which is the earliest DU
+#: that can mathematically carry a rate.
+CDI_VERTEX_DU = 1
+
+
 @dataclass(frozen=True)
 class CurveVertex:
     du: int
@@ -136,6 +144,8 @@ class DI1CurveManifest:
     curve_kind: str
     selection_reports: tuple[DI1SelectionReport, ...]
     vertices: tuple[CurveVertex, ...]
+    cdi_vertex_du: int | None
+    temporal_convention: str
 
     def to_json_dict(self) -> dict:
         return {
@@ -162,6 +172,8 @@ class DI1CurveManifest:
             "curve_kind": self.curve_kind,
             "contracts": [item.to_json_dict() for item in self.selection_reports],
             "vertices": [item.to_json_dict() for item in self.vertices],
+            "cdi_vertex_du": self.cdi_vertex_du,
+            "temporal_convention": self.temporal_convention,
         }
 
 
@@ -175,6 +187,11 @@ class DI1Curve:
     def get_rate_at_du(self, du: int, *, allow_extrapolation: bool = False) -> Decimal:
         if du < 0:
             raise ValueError("DU must not be negative")
+        if du == 0:
+            raise ValueError(
+                "DU=0 is the implicit unit base factor (factor(rate, 0) == 1 "
+                "for any rate); it is not a valid rate query"
+            )
         for vertex in self.vertices:
             if du == vertex.du:
                 return vertex.rate
@@ -294,11 +311,15 @@ def build_di_pre_curve(
     dus = [item[1] for item in selected_pairs]
     if len(dus) != len(set(dus)):
         raise ValueError("duplicate DU among selected vertices")
+    if cdi is not None and dus and dus[0] == CDI_VERTEX_DU:
+        raise ValueError(
+            f"selected DI1 vertex DU conflicts with the CDI vertex at DU={CDI_VERTEX_DU}"
+        )
     di1_vertices = tuple(
         CurveVertex(du, rate, "di1", record.contract_code)
         for record, du, rate in selected_pairs
     )
-    vertices = ((CurveVertex(0, cdi.rate, "cdi", None),) if cdi else ()) + di1_vertices
+    vertices = ((CurveVertex(CDI_VERTEX_DU, cdi.rate, "cdi", None),) if cdi else ()) + di1_vertices
     warnings = tuple(
         f"{report.contract_code}: low liquidity but included manually"
         for report in reports
@@ -326,6 +347,12 @@ def build_di_pre_curve(
         "ajuste oficial anterior" if mode is DI1SourceMode.PREVIOUS_OFFICIAL_SETTLEMENT else "indicativa intradiária",
         tuple(reports),
         vertices,
+        CDI_VERTEX_DU if cdi else None,
+        (
+            "DU=0 é apenas o fator-base implícito (nunca um vértice de taxa); "
+            f"DU={CDI_VERTEX_DU} é o primeiro vértice econômico negociável, "
+            "um dia útil após o snapshot, onde a taxa CDI é aplicada quando informada."
+        ),
     )
     return DI1Curve(vertices, tuple(record for record, _, _ in selected_pairs), manifest, cdi)
 
