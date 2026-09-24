@@ -15,10 +15,15 @@ Regras de consolidação:
 - Ao consolidar múltiplos arquivos, um mesmo dia pode aparecer em mais de
   um arquivo somente se o registro for **idêntico** (mesma Média e mesmo
   Fator diário informado); isso é contado como duplicata.
-- Um mesmo dia com valores diferentes entre arquivos é um **conflito** e
-  interrompe a consolidação com :class:`B3HistoryConflictError` — o
-  manifesto auditável (inclusive a lista de conflitos) é anexado à exceção
-  para diagnóstico, mas nenhuma série parcial ou "corrigida" é devolvida.
+- Um mesmo dia com valores diferentes entre arquivos é um **conflito**.
+  Todos os arquivos informados são lidos e mesclados integralmente antes
+  de qualquer decisão; somente depois de processar todas as entradas, se
+  houver um ou mais conflitos, a consolidação é interrompida com
+  :class:`B3HistoryConflictError` — o manifesto auditável anexado à
+  exceção é o manifesto **completo** (construído a partir de todos os
+  arquivos informados, não apenas dos lidos até o primeiro conflito
+  encontrado), mas nenhuma série consolidada "parcial" ou "corrigida" é
+  devolvida como retorno normal da função.
 - Lacunas (dias úteis, conforme ``calendar.is_business_day``, sem nenhum
   registro no intervalo coberto) são apenas reportadas no manifesto —
   nunca preenchidas, interpoladas ou inferidas.
@@ -28,7 +33,10 @@ Regras de consolidação:
   reportadas no manifesto, mas não impedem a consolidação — ao contrário
   de conflitos entre fontes, elas não representam uma contradição
   irreconciliável, e sim um sinal de qualidade a ser auditado pelo
-  chamador.
+  chamador. Cada divergência é contada uma única vez por **data
+  canônica** consolidada: se o mesmo registro divergente aparecer,
+  idêntico, em mais de um arquivo (uma duplicata permitida), ele não é
+  contado nem listado mais de uma vez no manifesto.
 """
 
 from __future__ import annotations
@@ -73,7 +81,13 @@ class B3HistoryUnsortedError(B3HistoryError):
 
 
 class B3HistoryConflictError(B3HistoryError):
-    """Duas fontes divergem para a mesma data (mesmo dia, valores diferentes)."""
+    """Duas fontes divergem para a mesma data (mesmo dia, valores diferentes).
+
+    Levantada somente após todos os arquivos informados terem sido lidos e
+    mesclados; o manifesto anexado em ``manifest`` é o manifesto completo
+    da consolidação (todos os arquivos, todas as lacunas/divergências já
+    computadas), não um recorte parcial interrompido no primeiro conflito.
+    """
 
     def __init__(self, message: str, manifest: "B3HistoryManifest") -> None:
         super().__init__(message)
@@ -278,10 +292,15 @@ def consolidate_b3_history(
     duplicatas) e o manifesto auditável correspondente. Registros
     idênticos repetidos entre arquivos (mesma data, mesma Média e mesmo
     Fator diário) são contados como duplicatas; registros com a mesma
-    data mas valores diferentes entre arquivos interrompem a consolidação
-    com :class:`B3HistoryConflictError`, que carrega o manifesto (parcial,
-    até o ponto do conflito) no atributo ``manifest`` para diagnóstico.
-    Lacunas de dias úteis nunca são preenchidas.
+    data mas valores diferentes entre arquivos são conflitos. Todos os
+    arquivos informados são lidos e mesclados integralmente antes de
+    qualquer decisão; somente depois, se houver conflitos, a função
+    levanta :class:`B3HistoryConflictError`, que carrega em ``manifest``
+    o manifesto **completo** da consolidação (não um recorte parcial até
+    o primeiro conflito). Lacunas de dias úteis nunca são preenchidas.
+    Cada divergência é contada uma única vez por data canônica, mesmo
+    que o registro divergente se repita, idêntico, em mais de um
+    arquivo.
     """
 
     if not paths:
@@ -291,7 +310,6 @@ def consolidate_b3_history(
     merged: dict[date, B3HistoricalRecord] = {}
     duplicate_count = 0
     conflicts: list[str] = []
-    divergences: list[str] = []
 
     for raw_path in paths:
         file_path = Path(raw_path)
@@ -305,13 +323,6 @@ def consolidate_b3_history(
         )
 
         for record in file_records:
-            if _has_reported_factor_divergence(record):
-                divergences.append(
-                    f"{record.reference_date.isoformat()} ({record.origin}): "
-                    f"Fator diário informado {record.reported_daily_factor} não "
-                    "confere com o valor recalculado a partir da Média"
-                )
-
             existing = merged.get(record.reference_date)
             if existing is None:
                 merged[record.reference_date] = record
@@ -331,6 +342,17 @@ def consolidate_b3_history(
 
     ordered_dates = sorted(merged.keys())
     consolidated = [merged[reference_date] for reference_date in ordered_dates]
+
+    # Divergências são contadas uma única vez por data canônica consolidada
+    # (não por ocorrência em cada arquivo), para que uma duplicata idêntica
+    # entre arquivos não infle artificialmente a contagem.
+    divergences: list[str] = [
+        f"{reference_date.isoformat()} ({merged[reference_date].origin}): "
+        f"Fator diário informado {merged[reference_date].reported_daily_factor} "
+        "não confere com o valor recalculado a partir da Média"
+        for reference_date in ordered_dates
+        if _has_reported_factor_divergence(merged[reference_date])
+    ]
 
     gaps: list[date] = []
     if ordered_dates:

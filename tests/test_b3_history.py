@@ -194,6 +194,28 @@ def test_consolidate_reports_divergence_without_rejecting(tmp_path):
     assert len(records) == 1
 
 
+def test_consolidate_counts_divergence_once_per_canonical_date(tmp_path):
+    file1 = _write_csv(
+        tmp_path / "part1.csv",
+        # Fator diário does not match the recalculation from Média.
+        [("24/09/2025", "14,90", "0,00000000")],
+    )
+    file2 = _write_csv(
+        tmp_path / "part2.csv",
+        # Same date, identical (divergent) record: allowed as duplicate.
+        [("24/09/2025", "14,90", "0,00000000")],
+    )
+
+    records, manifest = consolidate_b3_history([file1, file2])
+
+    assert manifest.duplicate_count == 1
+    assert manifest.conflicts == ()
+    # The identical divergent record appears in two files, but must be
+    # counted/listed only once, keyed by canonical consolidated date.
+    assert manifest.divergence_count == 1
+    assert len(records) == 1
+
+
 def test_consolidate_rejects_empty_path_list():
     with pytest.raises(B3HistoryFormatError):
         consolidate_b3_history([])
@@ -243,6 +265,7 @@ def test_consolidate_official_local_annual_fixture():
     assert manifest.period_end == date(2026, 9, 23)
     assert manifest.duplicate_count == 0
     assert manifest.conflicts == ()
+    assert manifest.divergence_count == 0
     assert len(manifest.files) == 1
     assert manifest.files[0].sha256 == hashlib.sha256(
         LOCAL_B3_CSV.read_bytes()

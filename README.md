@@ -117,10 +117,14 @@ Regras de consolidação:
   aceito quando o registro for **idêntico** (mesma `Média` e mesmo `Fator
   diário`); é contado como duplicata no manifesto.
 - **Conflito de mesma data é rejeitado:** o mesmo dia com valores
-  diferentes entre arquivos interrompe a consolidação com
-  `B3HistoryConflictError`. O manifesto (parcial, até o ponto do
-  conflito) fica disponível em `error.manifest` para diagnóstico — mas
-  nenhuma série "corrigida" ou parcial é devolvida como resultado válido.
+  diferentes entre arquivos é um conflito. Todos os arquivos informados
+  são lidos e mesclados integralmente antes de qualquer decisão; somente
+  depois, se houver um ou mais conflitos, a consolidação é interrompida
+  com `B3HistoryConflictError`. O manifesto disponível em `error.manifest`
+  é o manifesto **completo** (construído a partir de todos os arquivos
+  informados, não um recorte parcial até o primeiro conflito encontrado)
+  — mas nenhuma série "corrigida" ou parcial é devolvida como resultado
+  válido da função.
 - **Lacunas nunca são preenchidas:** dias úteis (conforme o calendário
   aproximado do motor) sem nenhum registro no intervalo coberto pela
   série consolidada são apenas listados em `manifest.gaps` — nunca
@@ -130,7 +134,11 @@ Regras de consolidação:
   da `Média` (mesma fórmula de TDIk usada em `import_b3_di_csv`) é listado
   em `manifest.divergences`. Ao contrário de um conflito entre fontes,
   isso não interrompe a consolidação — é um sinal de qualidade a ser
-  auditado pelo chamador, não uma contradição irreconciliável.
+  auditado pelo chamador, não uma contradição irreconciliável. Cada
+  divergência é contada **uma única vez por data canônica** consolidada:
+  se o mesmo registro divergente se repetir, idêntico, em mais de um
+  arquivo (uma duplicata permitida), ele não é listado nem contado mais
+  de uma vez em `manifest.divergences`.
 
 O manifesto (`B3HistoryManifest`) é auditável e serializável via
 `to_json_dict()`, trazendo `period_start`/`period_end`, `total_records`,
