@@ -46,6 +46,7 @@ class FactorJResult:
     precision_mode: str
     methodology_version: str
     data_version: str
+    calendar_version: str
 
     def to_json_dict(self) -> dict:
         """Serializa o resultado para um dicionário apto a virar JSON.
@@ -65,4 +66,5 @@ class FactorJResult:
             "precision_mode": self.precision_mode,
             "methodology_version": self.methodology_version,
             "data_version": self.data_version,
+            "calendar_version": self.calendar_version,
         }

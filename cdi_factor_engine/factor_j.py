@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from .accumulator import accumulate
+from .calendar import CALENDAR_VERSION
 from .decimal_policy import truncate
 from .domain.types import FactorJRequest, FactorJResult
 from .methodology import PRECISION_MODE_MAX
@@ -37,4 +38,5 @@ def calculate(request: FactorJRequest) -> FactorJResult:
         precision_mode=PRECISION_MODE_MAX,
         methodology_version=request.methodology_version,
         data_version=request.data_version,
+        calendar_version=CALENDAR_VERSION,
     )

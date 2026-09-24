@@ -13,7 +13,7 @@ from cdi_factor_engine.accumulator import (
     CUTOFF_REQUESTED_END_DATE_PUBLISHED,
     CUTOFF_START_EQUALS_END,
 )
-from cdi_factor_engine.calendar import business_days_between
+from cdi_factor_engine.calendar import CALENDAR_VERSION, business_days_between
 from cdi_factor_engine.methodology import METHODOLOGY_VERSION, PRECISION_MODE_MAX
 from cdi_factor_engine.validation import (
     DuplicateDateError,
@@ -158,8 +158,17 @@ def test_single_day_six_point_four_percent_at_114_percent():
     assert result.operational_factor_trunc6 == Decimal("1.000280")
 
 
-# 9. Golden test histórico de 2018-2019.
-def test_golden_case_2018_2019():
+# 9. Fixture sintético de compatibilidade agregada, 2018-2019.
+#
+# Este NÃO é um golden test histórico fiel: a série diária de taxas real
+# da planilha legada citada na issue não está disponível para este
+# projeto. O que este teste reproduz são os VALORES AGREGADOS informados
+# na issue (observações, fator bruto, fator operacional e valor final),
+# a partir de uma série sintética com taxa anual constante de 6,4% a.a.
+# em todos os 249 dias úteis do período (calculados pelo calendário do
+# próprio motor). Serve como evidência de compatibilidade agregada com a
+# planilha legada, não como prova histórica isolada da metodologia.
+def test_synthetic_aggregate_compatibility_fixture_2018_2019():
     start = date(2018, 11, 23)
     end = date(2019, 11, 19)
     series = flat_rate_series(start, end, Decimal("0.064"))
@@ -168,7 +177,7 @@ def test_golden_case_2018_2019():
         start,
         end,
         Decimal("1.14"),
-        data_version="golden-fixture-legacy-spreadsheet-v1",
+        data_version="synthetic-aggregate-compatibility-fixture-v1",
     )
     assert result.observations == 249
     assert result.effective_end_date == end
@@ -272,11 +281,11 @@ def test_requested_start_after_end_raises():
 
 # 13. Reforço de validação: acumulação com taxas VARIÁVEIS dia a dia.
 #
-# O golden test (item 9 acima) usa uma série sintética de taxa CONSTANTE
-# (6,4% a.a. em todos os dias), o que valida a truncagem/observações/
-# effective_end_date, mas não comprova, isoladamente, que a acumulação
-# multiplica corretamente fatores diários DIFERENTES entre si (o cenário
-# real do CDI, cuja taxa muda ao longo do tempo).
+# O fixture sintético de compatibilidade agregada (item 9 acima) usa uma
+# série de taxa CONSTANTE (6,4% a.a. em todos os dias), o que valida a
+# truncagem/observações/effective_end_date, mas não comprova, isoladamente,
+# que a acumulação multiplica corretamente fatores diários DIFERENTES
+# entre si (o cenário real do CDI, cuja taxa muda ao longo do tempo).
 #
 # Este teste usa uma série sintética adicional, com taxas anuais que
 # variam a cada dia útil dentro do período. É explicitamente uma série
@@ -324,7 +333,7 @@ def test_accumulation_with_variable_daily_rates():
         for business_day, rate in zip(business_days, synthetic_annual_rates)
     ]
 
-    percentual = Decimal("1.14")  # 114% do CDI, mesmo percentual do golden test
+    percentual = Decimal("1.14")  # 114% do CDI, mesmo percentual do fixture do item 9
     result = calculate_factor_j(series, start, end, percentual)
 
     assert result.observations == 10
@@ -351,3 +360,18 @@ def test_accumulation_with_variable_daily_rates():
     # A truncagem só ocorre no resultado final: o fator bruto acumulado
     # continua com casas decimais além da sexta, mesmo com taxas variáveis.
     assert result.raw_factor != result.operational_factor_trunc6
+
+
+# 14. calendar_version é devolvido e serializado como texto.
+def test_calendar_version_is_returned_and_serialized():
+    start = date(2019, 3, 11)
+    end = date(2019, 3, 13)
+    series = flat_rate_series(start, end, Decimal("0.064"))
+    result = calculate_factor_j(series, start, end, Decimal("1.0"))
+
+    assert result.calendar_version == CALENDAR_VERSION
+    assert isinstance(result.calendar_version, str)
+
+    payload = result.to_json_dict()
+    assert payload["calendar_version"] == CALENDAR_VERSION
+    assert isinstance(payload["calendar_version"], str)

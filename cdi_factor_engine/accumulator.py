@@ -52,9 +52,9 @@ def accumulate(
         )
 
     # Valida a série na ordem exatamente informada: uma série desordenada
-    # deve falhar, não ser silenciosamente reordenada.
+    # ou com datas duplicadas deve falhar, nunca ser reordenada ou
+    # deduplicada silenciosamente.
     validate_series(rate_series)
-    sorted_series = sorted(rate_series, key=lambda obs: obs.reference_date)
 
     if requested_start_date == requested_end_date:
         return AccumulationResult(
@@ -65,7 +65,7 @@ def accumulate(
         )
 
     published_up_to_requested_end = [
-        obs for obs in sorted_series if obs.reference_date <= requested_end_date
+        obs for obs in rate_series if obs.reference_date <= requested_end_date
     ]
     if not published_up_to_requested_end:
         raise NoRateDataError(
@@ -89,7 +89,7 @@ def accumulate(
     # seja aplicado antes da truncagem operacional final.
     with localcontext() as ctx:
         ctx.prec = INTERNAL_PRECISION
-        for obs in sorted_series:
+        for obs in rate_series:
             if obs.reference_date <= requested_start_date:
                 continue
             if obs.reference_date > effective_end_date:

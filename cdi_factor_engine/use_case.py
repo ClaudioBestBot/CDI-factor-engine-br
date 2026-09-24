@@ -30,7 +30,11 @@ def calculate_factor_j(
 
     ``rate_series`` deve conter as taxas anuais (base 252, forma decimal)
     publicadas nas datas relevantes, incluindo, quando disponível, a data
-    inicial solicitada. A série não precisa estar ordenada previamente.
+    inicial solicitada. A série deve chegar estritamente ordenada por data
+    crescente (sem duplicatas); uma série desordenada ou duplicada não é
+    reordenada nem deduplicada silenciosamente — produz
+    :class:`~cdi_factor_engine.validation.UnsortedSeriesError` ou
+    :class:`~cdi_factor_engine.validation.DuplicateDateError`.
     """
 
     request = FactorJRequest(

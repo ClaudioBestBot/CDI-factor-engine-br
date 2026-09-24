@@ -17,6 +17,16 @@ from __future__ import annotations
 from datetime import date, timedelta
 from functools import lru_cache
 
+#: Identificador explícito e auditável deste calendário aproximado.
+#:
+#: Cobre apenas feriados nacionais fixos e móveis de base cristã
+#: (Carnaval, Sexta-feira Santa e Corpus Christi). Não considera feriados
+#: estaduais, municipais nem pontos facultativos, e **não representa o
+#: calendário oficial de negociação da B3**. Todo resultado do motor
+#: devolve este identificador em ``calendar_version`` para deixar essa
+#: aproximação explícita e rastreável.
+CALENDAR_VERSION = "approximate-national-holidays-v1"
+
 
 def _easter_sunday(year: int) -> date:
     """Calcula a data da Páscoa (algoritmo gregoriano anônimo)."""
