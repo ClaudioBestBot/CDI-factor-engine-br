@@ -214,5 +214,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Dados B3 fornecidos localmente; a redistribuição exige confirmação de termos.
+local-data/
+
 # Streamlit
 .streamlit/secrets.toml

@@ -5,10 +5,11 @@ Open, auditable and deterministic engine for Brazilian CDI factor calculations.
 ## ⚠️ Caráter educacional/técnico — sem afiliação oficial
 
 Este projeto é **material educacional/técnico independente**. Ele **não tem
-qualquer afiliação, endosso ou vínculo oficial com a B3 ou com a CETIP**, e
-não reproduz nenhuma metodologia oficial publicada por essas instituições.
+afiliação, certificação, endosso ou vínculo oficial com a B3 ou com a CETIP**.
+O modo B3 é uma implementação independente baseada em documentação pública,
+sem alegar reprodução certificada ou oficial de qualquer metodologia.
 
-A metodologia de cálculo implementada é identificada explicitamente como:
+A metodologia legada de cálculo é identificada explicitamente como:
 
 ```
 legacy-reconstructed/max-precision-v1
@@ -19,6 +20,44 @@ usuais e de evidência legada (planilha), **até que seja confirmada por
 documentação oficial e golden cases independentes**. Todo resultado do
 motor traz o campo `methodology_version` para deixar essa origem explícita
 e rastreável.
+
+## Metodologia acumulada DI-B3
+
+Além do modo legado, o motor disponibiliza explicitamente
+`b3-accumulated/252-v1`, uma implementação independente do cálculo
+acumulado DI-B3. Ela não substitui nem altera
+`legacy-reconstructed/max-precision-v1`.
+
+É uma implementação independente baseada na documentação pública da B3,
+sem afiliação, certificação ou endosso da B3.
+
+Este modo recebe taxas DI-B3 Over anuais em **percentual** (por exemplo,
+`Decimal("14.90")`) e acumula `[start_date, end_date)`: inclui a data
+inicial e exclui a final, sem recuo implícito de datas. Para cada observação,
+calcula TDIk em base 252 e arredonda em 8 casas (half-up), trunca o fator
+diário e o acumulado em 16 casas após cada multiplicação e arredonda o fator
+final em 8 casas (half-up). O percentual contratado deve ter, no máximo,
+quatro casas decimais.
+
+```python
+from cdi_factor_engine import B3RateObservation, calculate_b3_accumulated
+
+result = calculate_b3_accumulated(
+    [B3RateObservation(date(2025, 9, 24), Decimal("14.90"))],
+    date(2025, 9, 24),
+    date(2025, 9, 25),
+    Decimal("114.0000"),
+    data_version="local-b3-csv",
+)
+```
+
+O importador local `import_b3_di_csv(path)` aceita o CSV público B3 com BOM,
+`;`, datas `DD/MM/YYYY` e vírgula decimal. Ele localiza o cabeçalho após o
+texto introdutório, rejeita `Nenhum resultado` e confere `Fator diário`
+contra a taxa `Média` recalculada. Não há download automático, e séries
+anuais B3 não são incluídas neste repositório. A metodologia é baseada na
+[documentação pública da B3 sobre cálculo acumulado de DI](https://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-de-segmentos-e-setoriais/di/metodologia-de-calcudo-acumulado-de-di/);
+este projeto continua sem afiliação, certificação ou endosso da B3.
 
 ## Escopo do MVP 1
 
