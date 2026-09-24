@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -13,7 +12,13 @@ from .anbima_calendar import (
     AnbimaCalendar,
     is_anbima_business_day,
 )
-from .di1_contracts import DI1Contract, DI1SourceMode, extract_rate, import_di1_csv
+from .di1_contracts import (
+    DI1Contract,
+    DI1SourceMode,
+    extract_rate,
+    import_di1_csv,
+    parse_di1_code,
+)
 from .flat_forward import (
     flat_forward_extrapolate_curve,
     flat_forward_interpolate,
@@ -53,6 +58,33 @@ class CDIReference:
     rate: Decimal
     reference_date: date
     origin: str
+
+
+@dataclass(frozen=True)
+class CurveVertex:
+    du: int
+    rate: Decimal
+    origin: str
+    contract_code: str | None = None
+
+    def __getitem__(self, index: int):
+        if index == 0:
+            return self.du
+        if index == 1:
+            return self.rate
+        raise IndexError(index)
+
+    def __iter__(self):
+        yield self.du
+        yield self.rate
+
+    def to_json_dict(self) -> dict:
+        return {
+            "du": self.du,
+            "rate": str(self.rate),
+            "origin": self.origin,
+            "contract_code": self.contract_code,
+        }
 
 
 @dataclass(frozen=True)
@@ -103,6 +135,7 @@ class DI1CurveManifest:
     quality_warnings: tuple[str, ...]
     curve_kind: str
     selection_reports: tuple[DI1SelectionReport, ...]
+    vertices: tuple[CurveVertex, ...]
 
     def to_json_dict(self) -> dict:
         return {
@@ -128,12 +161,13 @@ class DI1CurveManifest:
             "quality_warnings": list(self.quality_warnings),
             "curve_kind": self.curve_kind,
             "contracts": [item.to_json_dict() for item in self.selection_reports],
+            "vertices": [item.to_json_dict() for item in self.vertices],
         }
 
 
 @dataclass(frozen=True)
 class DI1Curve:
-    vertices: tuple[tuple[int, Decimal], ...]
+    vertices: tuple[CurveVertex, ...]
     vertex_contracts: tuple[DI1Contract, ...]
     manifest: DI1CurveManifest
     cdi: CDIReference | None = None
@@ -141,28 +175,30 @@ class DI1Curve:
     def get_rate_at_du(self, du: int, *, allow_extrapolation: bool = False) -> Decimal:
         if du < 0:
             raise ValueError("DU must not be negative")
-        if self.cdi is not None and du == 0:
-            return self.cdi.rate
-        for vertex_du, rate in self.vertices:
-            if du == vertex_du:
-                return rate
+        for vertex in self.vertices:
+            if du == vertex.du:
+                return vertex.rate
         if not self.vertices:
             raise ValueError("curve has no DI1 vertices")
-        if du < self.vertices[0][0]:
+        if du < self.vertices[0].du:
             raise ValueError("DU is before the first DI1 vertex")
         for previous, following in zip(self.vertices, self.vertices[1:]):
-            if previous[0] < du < following[0]:
-                return flat_forward_interpolate(previous[0], previous[1], following[0], following[1], du)
+            if previous.du < du < following.du:
+                return flat_forward_interpolate(
+                    previous.du, previous.rate, following.du, following.rate, du
+                )
         if not allow_extrapolation:
             raise ValueError("DU is after the last vertex; extrapolation is disabled")
-        return flat_forward_extrapolate_curve(self.vertices, du)
+        return flat_forward_extrapolate_curve(
+            tuple((vertex.du, vertex.rate) for vertex in self.vertices), du
+        )
 
     def presentation_rate_at_du(self, du: int, *, allow_extrapolation: bool = False) -> Decimal:
         return rounded_rate_percent(self.get_rate_at_du(du, allow_extrapolation=allow_extrapolation))
 
     @property
     def rates(self) -> tuple[Decimal, ...]:
-        return tuple(rate for _, rate in self.vertices)
+        return tuple(vertex.rate for vertex in self.vertices)
 
 
 def build_di_pre_curve(
@@ -189,11 +225,40 @@ def build_di_pre_curve(
         raise ValueError("snapshot_timestamp must include a timezone")
     if any(record.snapshot_timestamp != snapshot for record in records):
         raise ValueError("all contracts must belong to the same snapshot")
+    divergent_modes = [
+        record.contract_code for record in records if record.source_mode is not mode
+    ]
+    if divergent_modes:
+        raise ValueError(
+            f"contracts with source_mode different from {mode.value}: "
+            + ", ".join(divergent_modes)
+        )
     if cdi_rate is not None and (cdi_reference_date is None or cdi_origin is None):
         raise ValueError("cdi_reference_date and cdi_origin are required with cdi_rate")
-    cdi = None if cdi_rate is None else CDIReference(cdi_rate, cdi_reference_date, cdi_origin)
-    manual = {code.strip().upper() for code in manual_codes} if manual_codes is not None else None
-    mandatory = {code.strip().upper() for code in mandatory_codes}
+    if cdi_rate is not None:
+        if cdi_reference_date != snapshot.date():
+            raise ValueError("cdi_reference_date must equal snapshot_timestamp.date() in di-pre-curve/v1")
+        if not cdi_origin or not cdi_origin.strip():
+            raise ValueError("cdi_origin must not be blank")
+        if not isinstance(cdi_rate, Decimal) or not cdi_rate.is_finite() or cdi_rate <= Decimal("-100"):
+            raise ValueError("cdi_rate must be finite and greater than -100")
+    cdi = None if cdi_rate is None else CDIReference(cdi_rate, cdi_reference_date, cdi_origin.strip())
+
+    def canonical_requested_codes(codes: Iterable[str]) -> set[str]:
+        result = set()
+        for code in codes:
+            result.add(parse_di1_code(code).code)
+        return result
+
+    manual = canonical_requested_codes(manual_codes) if manual_codes is not None else None
+    mandatory = canonical_requested_codes(mandatory_codes)
+    received_codes = {record.contract_code for record in records}
+    requested_codes = (manual or set()) | mandatory
+    missing_codes = requested_codes - received_codes
+    if missing_codes:
+        raise ValueError(
+            "requested DI1 codes absent from snapshot: " + ", ".join(sorted(missing_codes))
+        )
     reports: list[DI1SelectionReport] = []
     selected_pairs: list[tuple[DI1Contract, int, Decimal]] = []
     seen_maturities: dict[date, tuple[Decimal, str]] = {}
@@ -229,7 +294,11 @@ def build_di_pre_curve(
     dus = [item[1] for item in selected_pairs]
     if len(dus) != len(set(dus)):
         raise ValueError("duplicate DU among selected vertices")
-    vertices = tuple((du, rate) for _, du, rate in selected_pairs)
+    di1_vertices = tuple(
+        CurveVertex(du, rate, "di1", record.contract_code)
+        for record, du, rate in selected_pairs
+    )
+    vertices = ((CurveVertex(0, cdi.rate, "cdi", None),) if cdi else ()) + di1_vertices
     warnings = tuple(
         f"{report.contract_code}: low liquidity but included manually"
         for report in reports
@@ -249,13 +318,14 @@ def build_di_pre_curve(
         tuple(report.to_json_dict() for report in reports if report.excluded),
         selected_pairs[0][0].maturity_date if selected_pairs else None,
         selected_pairs[-1][0].maturity_date if selected_pairs else None,
-        len(vertices) + (1 if cdi else 0),
-        selected_pairs[0][0].maturity_date if selected_pairs else None,
+        len(vertices),
+        cdi.reference_date if cdi else (selected_pairs[0][0].maturity_date if selected_pairs else None),
         selected_pairs[-1][0].maturity_date if selected_pairs else None,
         source_sha256,
         warnings,
         "ajuste oficial anterior" if mode is DI1SourceMode.PREVIOUS_OFFICIAL_SETTLEMENT else "indicativa intradiária",
         tuple(reports),
+        vertices,
     )
     return DI1Curve(vertices, tuple(record for record, _, _ in selected_pairs), manifest, cdi)
 

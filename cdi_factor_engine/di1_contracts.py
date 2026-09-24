@@ -53,7 +53,8 @@ def parse_di1_code(code: str, maturity_date: date | None = None) -> DI1Code:
         raise DI1FormatError(f"invalid DI1 contract code: {code!r}")
     month = _MONTHS[match.group(1)]
     year = 2000 + int(match.group(2))
-    parsed = DI1Code(normalized, month, year)
+    canonical = f"DI1{match.group(1).upper()}{match.group(2)}"
+    parsed = DI1Code(canonical, month, year)
     if maturity_date is not None and (
         maturity_date.month != parsed.month or maturity_date.year != parsed.year
     ):
@@ -120,7 +121,24 @@ class DI1Contract:
     def __post_init__(self) -> None:
         if self.snapshot_timestamp.tzinfo is None:
             raise DI1FormatError("snapshot_timestamp must include a timezone")
-        parse_di1_code(self.contract_code, self.maturity_date)
+        object.__setattr__(self, "source_mode", DI1SourceMode(self.source_mode))
+        parsed = parse_di1_code(self.contract_code, self.maturity_date)
+        object.__setattr__(self, "contract_code", parsed.code)
+        for field_name in (
+            "last_rate", "bid_rate", "ask_rate", "previous_settlement_rate", "volume"
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                if not isinstance(value, Decimal) or not value.is_finite():
+                    raise DI1FormatError(f"{field_name} must be a finite Decimal")
+                if field_name != "volume" and value <= Decimal("-100"):
+                    raise DI1FormatError(f"{field_name} must be greater than -100")
+                if field_name == "volume" and value < 0:
+                    raise DI1FormatError("volume must not be negative")
+        for field_name in ("open_interest", "trade_count", "traded_contracts"):
+            value = getattr(self, field_name)
+            if value is not None and (not isinstance(value, int) or value < 0):
+                raise DI1FormatError(f"{field_name} must be a non-negative integer")
 
     def rate_for_mode(self) -> Decimal | None:
         if self.source_mode is DI1SourceMode.PREVIOUS_OFFICIAL_SETTLEMENT:

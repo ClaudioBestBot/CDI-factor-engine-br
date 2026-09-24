@@ -73,6 +73,7 @@ from .di1_contracts import (
 )
 from .di_pre_curve import (
     CDIReference,
+    CurveVertex,
     DI1Curve,
     DI1CurveManifest,
     DI1SelectionReport,
@@ -138,6 +139,7 @@ __all__ = [
     "parse_contract_code",
     "parse_di1_code",
     "CDIReference",
+    "CurveVertex",
     "DI1Curve",
     "DI1CurveManifest",
     "DI1SelectionReport",

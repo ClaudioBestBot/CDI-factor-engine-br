@@ -26,6 +26,7 @@ SNAPSHOT = datetime(2024, 1, 2, 15, 0, tzinfo=timezone.utc)
 
 
 def contract(code: str, maturity: date, **kwargs) -> DI1Contract:
+    source_mode = kwargs.pop("source_mode", DI1SourceMode.INDICATIVE_INTRADAY_LAST)
     values = dict(
         last_rate=Decimal("10.1234"),
         bid_rate=Decimal("10.10"), ask_rate=Decimal("10.20"),
@@ -34,7 +35,7 @@ def contract(code: str, maturity: date, **kwargs) -> DI1Contract:
     )
     values.update(kwargs)
     return DI1Contract(
-        SNAPSHOT, "synthetic-fixture", DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+        SNAPSHOT, "synthetic-fixture", source_mode,
         code, maturity, **values
     )
 
@@ -115,6 +116,17 @@ def test_extrapolation_is_opt_in_and_cdi_is_explicit_first_vertex():
         cdi_rate=Decimal("9.5"), cdi_reference_date=date(2024, 1, 2), cdi_origin="manual-input",
     )
     assert curve.get_rate_at_du(0) == Decimal("9.5")
+    assert curve.vertices[0].origin == "cdi"
+    assert curve.manifest.vertex_count == 3
+    assert curve.manifest.period_start == date(2024, 1, 2)
+    du_first = curve.vertices[1].du
+    assert curve.get_rate_at_du(1) == flat_forward_interpolate(
+        0, Decimal("9.5"), du_first, curve.vertices[1].rate, 1
+    )
+    midpoint = du_first // 2
+    assert curve.get_rate_at_du(midpoint) == flat_forward_interpolate(
+        0, Decimal("9.5"), du_first, curve.vertices[1].rate, midpoint
+    )
     with pytest.raises(ValueError):
         curve.get_rate_at_du(curve.vertices[-1][0] + 1)
     assert isinstance(curve.get_rate_at_du(curve.vertices[-1][0] + 1, allow_extrapolation=True), Decimal)
@@ -154,3 +166,81 @@ def test_curve_rejects_duplicate_du():
     two = contract("DI1V26", date(2026, 10, 1))
     curve = build_di_pre_curve([one, two], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST)
     assert curve.manifest.selection_reports[1].reason == "duplicate_maturity"
+
+
+def test_source_mode_must_match_every_contract():
+    item = contract("DI1V26", date(2026, 10, 1))
+    build_di_pre_curve([item], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST)
+    divergent = contract(
+        "DI1V27", date(2027, 10, 1),
+        source_mode=DI1SourceMode.PREVIOUS_OFFICIAL_SETTLEMENT,
+    )
+    with pytest.raises(ValueError, match="DI1V27"):
+        build_di_pre_curve(
+            [item, divergent], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST
+        )
+
+
+@pytest.mark.parametrize("requested", [["DI1V26"], ["BMF:DI1V26"]])
+@pytest.mark.parametrize("received", ["DI1V26", "BMF:DI1V26"])
+def test_manual_code_forms_are_canonicalized(requested, received):
+    item = contract(received, date(2026, 10, 1))
+    curve = build_di_pre_curve(
+        [item], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+        manual_codes=requested,
+    )
+    assert curve.manifest.selected_contract_codes == ("DI1V26",)
+
+
+def test_invalid_or_absent_requested_codes_are_rejected():
+    item = contract("DI1V26", date(2026, 10, 1))
+    with pytest.raises(DI1FormatError):
+        build_di_pre_curve([item], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+                           manual_codes=["NOT-A-DI1"])
+    with pytest.raises(ValueError, match="absent"):
+        build_di_pre_curve([item], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+                           mandatory_codes=["DI1V27"])
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"cdi_reference_date": date(2024, 1, 3)}, "reference_date"),
+        ({"cdi_origin": " "}, "origin"),
+        ({"cdi_rate": Decimal("NaN")}, "cdi_rate"),
+        ({"cdi_rate": Decimal("Infinity")}, "cdi_rate"),
+        ({"cdi_rate": Decimal("-100")}, "cdi_rate"),
+    ],
+)
+def test_cdi_validation(kwargs, message):
+    params = {
+        "cdi_rate": Decimal("9.5"),
+        "cdi_reference_date": date(2024, 1, 2),
+        "cdi_origin": "manual-input",
+    }
+    params.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        build_di_pre_curve(
+            [contract("DI1V26", date(2026, 10, 1))],
+            source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+            **params,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("last_rate", Decimal("NaN")),
+        ("bid_rate", Decimal("Infinity")),
+        ("ask_rate", Decimal("-100")),
+        ("previous_settlement_rate", Decimal("-100.01")),
+        ("volume", Decimal("-1")),
+        ("volume", Decimal("NaN")),
+        ("open_interest", -1),
+        ("trade_count", -1),
+        ("traded_contracts", -1),
+    ],
+)
+def test_di1_numeric_validation(field, value):
+    with pytest.raises(DI1FormatError, match=field):
+        contract("DI1V26", date(2026, 10, 1), **{field: value})
