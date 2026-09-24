@@ -268,3 +268,86 @@ def test_requested_start_after_end_raises():
     series = flat_rate_series(end, start, Decimal("0.064"))
     with pytest.raises(InvalidDateRangeError):
         calculate_factor_j(series, start, end, Decimal("1.0"))
+
+
+# 13. Reforço de validação: acumulação com taxas VARIÁVEIS dia a dia.
+#
+# O golden test (item 9 acima) usa uma série sintética de taxa CONSTANTE
+# (6,4% a.a. em todos os dias), o que valida a truncagem/observações/
+# effective_end_date, mas não comprova, isoladamente, que a acumulação
+# multiplica corretamente fatores diários DIFERENTES entre si (o cenário
+# real do CDI, cuja taxa muda ao longo do tempo).
+#
+# Este teste usa uma série sintética adicional, com taxas anuais que
+# variam a cada dia útil dentro do período. É explicitamente uma série
+# fabricada para fins de teste (não é a série real da planilha legada
+# nem dados oficiais de nenhuma fonte) -- os valores foram escolhidos
+# apenas para não serem todos iguais entre si, simulando o padrão de
+# "taxa muda a cada poucos dias e depois se mantém" observado na prática,
+# sem qualquer pretensão de precisão histórica.
+#
+# O valor esperado é calculado por uma segunda implementação da fórmula,
+# escrita diretamente neste teste (independente do código de produção),
+# em um contexto decimal de alta precisão. Isso detecta regressões na
+# acumulação (por exemplo, o bug de precisão do expoente 1/252 corrigido
+# durante o desenvolvimento deste MVP, que só se manifestava ao comparar
+# com uma potenciação calculada fora do contexto de alta precisão).
+def test_accumulation_with_variable_daily_rates():
+    start = date(2019, 8, 1)  # quinta-feira
+    end = date(2019, 8, 15)  # quinta-feira (10 dias úteis após o início)
+
+    business_days = business_days_between(start, end)
+    assert len(business_days) == 10  # garante a premissa do teste
+
+    # Série sintética e fabricada: taxa anual (base 252, forma decimal)
+    # variando a cada dia útil, sem repetir o mesmo valor em sequência
+    # mais de duas vezes, para exercitar de fato fatores diários distintos.
+    synthetic_annual_rates = [
+        Decimal("0.0640"),
+        Decimal("0.0640"),
+        Decimal("0.0590"),
+        Decimal("0.0590"),
+        Decimal("0.0700"),
+        Decimal("0.0555"),
+        Decimal("0.0620"),
+        Decimal("0.0480"),
+        Decimal("0.0480"),
+        Decimal("0.0665"),
+    ]
+    assert len(synthetic_annual_rates) == len(business_days)
+    # Confirma que a premissa "taxas variáveis" se sustenta: nem todas as
+    # observações têm a mesma taxa.
+    assert len(set(synthetic_annual_rates)) > 1
+
+    series = [RateObservation(start, Decimal("0.0640"))] + [
+        RateObservation(business_day, rate)
+        for business_day, rate in zip(business_days, synthetic_annual_rates)
+    ]
+
+    percentual = Decimal("1.14")  # 114% do CDI, mesmo percentual do golden test
+    result = calculate_factor_j(series, start, end, percentual)
+
+    assert result.observations == 10
+    assert result.effective_end_date == end
+    assert result.cutoff_reason == CUTOFF_REQUESTED_END_DATE_PUBLISHED
+
+    # Segunda implementação da fórmula, independente da produção,
+    # calculada com alta precisão e sem arredondamento intermediário.
+    with localcontext() as ctx:
+        ctx.prec = 60
+        expected_raw_factor = Decimal(1)
+        for annual_rate in synthetic_annual_rates:
+            daily_di_factor = (Decimal(1) + annual_rate) ** (Decimal(1) / Decimal(252))
+            contract_factor = Decimal(1) + percentual * (daily_di_factor - Decimal(1))
+            expected_raw_factor *= contract_factor
+
+    assert result.raw_factor == expected_raw_factor
+
+    expected_operational_factor = expected_raw_factor.quantize(
+        Decimal("0.000001"), rounding="ROUND_DOWN"
+    )
+    assert result.operational_factor_trunc6 == expected_operational_factor
+
+    # A truncagem só ocorre no resultado final: o fator bruto acumulado
+    # continua com casas decimais além da sexta, mesmo com taxas variáveis.
+    assert result.raw_factor != result.operational_factor_trunc6

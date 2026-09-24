@@ -101,3 +101,14 @@ fator operacional `1.072376`), reproduzido a partir de uma série sintética
 com taxa anual constante de 6,4% a.a. e do calendário de dias úteis do
 motor — consistente com a metodologia `legacy-reconstructed/max-precision-v1`
 e não uma prova oficial isolada.
+
+**Limitação conhecida do golden test e teste complementar:** por usar taxa
+anual constante em todos os dias, o golden test sozinho não comprova que a
+acumulação multiplica corretamente fatores diários *diferentes* entre si
+(o cenário real do CDI, cuja taxa muda ao longo do tempo). Para cobrir essa
+lacuna, há um teste adicional (`test_accumulation_with_variable_daily_rates`)
+com uma série **sintética e fabricada para fins de teste** — não é a série
+real da planilha legada nem dados oficiais de nenhuma fonte — com taxas
+anuais que variam a cada dia útil. O valor esperado é calculado por uma
+segunda implementação independente da fórmula, escrita diretamente no
+teste, o que ajuda a detectar regressões na acumulação com taxas variáveis.
