@@ -74,7 +74,7 @@ def test_b3_truncates_accumulation_after_every_multiplication():
     )
 
 
-def test_b3_constant_249_observations_matches_official_example():
+def test_b3_synthetic_249_observations_matches_expected_fixture_result():
     observations = [
         B3RateObservation(date(2025, 1, 1).fromordinal(date(2025, 1, 1).toordinal() + index), Decimal("6.40"))
         for index in range(249)

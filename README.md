@@ -5,8 +5,9 @@ Open, auditable and deterministic engine for Brazilian CDI factor calculations.
 ## ⚠️ Caráter educacional/técnico — sem afiliação oficial
 
 Este projeto é **material educacional/técnico independente**. Ele **não tem
-qualquer afiliação, endosso ou vínculo oficial com a B3 ou com a CETIP**, e
-não reproduz nenhuma metodologia oficial publicada por essas instituições.
+afiliação, certificação, endosso ou vínculo oficial com a B3 ou com a CETIP**.
+O modo B3 é uma implementação independente baseada em documentação pública,
+sem alegar reprodução certificada ou oficial de qualquer metodologia.
 
 A metodologia legada de cálculo é identificada explicitamente como:
 
@@ -26,6 +27,9 @@ Além do modo legado, o motor disponibiliza explicitamente
 `b3-accumulated/252-v1`, uma implementação independente do cálculo
 acumulado DI-B3. Ela não substitui nem altera
 `legacy-reconstructed/max-precision-v1`.
+
+É uma implementação independente baseada na documentação pública da B3,
+sem afiliação, certificação ou endosso da B3.
 
 Este modo recebe taxas DI-B3 Over anuais em **percentual** (por exemplo,
 `Decimal("14.90")`) e acumula `[start_date, end_date)`: inclui a data
@@ -53,7 +57,7 @@ texto introdutório, rejeita `Nenhum resultado` e confere `Fator diário`
 contra a taxa `Média` recalculada. Não há download automático, e séries
 anuais B3 não são incluídas neste repositório. A metodologia é baseada na
 [documentação pública da B3 sobre cálculo acumulado de DI](https://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-de-segmentos-e-setoriais/di/metodologia-de-calcudo-acumulado-de-di/);
-este projeto continua sem afiliação ou endosso da B3.
+este projeto continua sem afiliação, certificação ou endosso da B3.
 
 ## Escopo do MVP 1
 
