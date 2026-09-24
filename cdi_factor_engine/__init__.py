@@ -44,7 +44,9 @@ from .validation import (
     UnsortedSeriesError,
 )
 from .anbima_calendar import (
+    ANBIMA_ALGORITHMIC_CALENDAR_VERSION,
     ANBIMA_CALENDAR_VERSION,
+    ANBIMA_IMPORTED_CALENDAR_VERSION,
     AnbimaCalendar,
     AnbimaHoliday,
     generate_anbima_calendar,
@@ -91,6 +93,8 @@ __all__ = [
     "to_b3_rate_observations",
     "calculate_b3_accumulated_from_history",
     "ANBIMA_CALENDAR_VERSION",
+    "ANBIMA_ALGORITHMIC_CALENDAR_VERSION",
+    "ANBIMA_IMPORTED_CALENDAR_VERSION",
     "AnbimaCalendar",
     "AnbimaHoliday",
     "generate_anbima_calendar",

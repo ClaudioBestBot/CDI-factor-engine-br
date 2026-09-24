@@ -14,7 +14,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Mapping
 
-ANBIMA_CALENDAR_VERSION = "anbima-national-holidays-2001-2099-v2023"
+ANBIMA_ALGORITHMIC_CALENDAR_VERSION = "anbima-national-holidays-2001-2099-v2023"
+ANBIMA_IMPORTED_CALENDAR_VERSION = "anbima-national-holidays-imported-v1"
+# Compatibility alias for callers that used the generated-calendar constant.
+ANBIMA_CALENDAR_VERSION = ANBIMA_ALGORITHMIC_CALENDAR_VERSION
 
 
 def _easter_sunday(year: int) -> date:
@@ -48,6 +51,8 @@ class AnbimaCalendar:
     period_start: date
     period_end: date
     holidays: tuple[AnbimaHoliday, ...]
+    raw_rows_processed: int | None = None
+    ignored_footer_start_row: int | None = None
 
     @property
     def dates(self) -> frozenset[date]:
@@ -64,19 +69,27 @@ class AnbimaCalendar:
 
 def _holiday_names(year: int) -> Mapping[date, tuple[str, ...]]:
     easter = _easter_sunday(year)
-    return {
-        date(year, 1, 1): ("Confraternização Universal",),
-        date(year, 4, 21): ("Tiradentes",),
-        date(year, 5, 1): ("Dia Mundial do Trabalho",),
-        date(year, 9, 7): ("Independência do Brasil",),
-        date(year, 10, 12): ("Nossa Senhora Aparecida",),
-        date(year, 11, 2): ("Finados",),
-        date(year, 11, 15): ("Proclamação da República",),
-        date(year, 12, 25): ("Natal",),
-        easter - timedelta(days=47): ("Carnaval",),
-        easter - timedelta(days=2): ("Sexta-feira Santa",),
-        easter + timedelta(days=60): ("Corpus Christi",),
-    }
+    events = [
+        (date(year, 1, 1), "Confraternização Universal"),
+        (date(year, 4, 21), "Tiradentes"),
+        (date(year, 5, 1), "Dia Mundial do Trabalho"),
+        (date(year, 9, 7), "Independência do Brasil"),
+        (date(year, 10, 12), "Nossa Senhora Aparecida"),
+        (date(year, 11, 2), "Finados"),
+        (date(year, 11, 15), "Proclamação da República"),
+        (date(year, 12, 25), "Natal"),
+        (easter - timedelta(days=47), "Carnaval"),
+        (easter - timedelta(days=2), "Sexta-feira Santa"),
+        (easter + timedelta(days=60), "Corpus Christi"),
+    ]
+    if year >= 2024:
+        events.append(
+            (date(year, 11, 20), "Dia Nacional de Zumbi e da Consciência Negra")
+        )
+    merged: dict[date, list[str]] = {}
+    for holiday_date, name in events:
+        merged.setdefault(holiday_date, []).append(name)
+    return {holiday_date: tuple(names) for holiday_date, names in merged.items()}
 
 
 def generate_anbima_calendar(
@@ -93,12 +106,13 @@ def generate_anbima_calendar(
         for day, names in sorted(merged.items())
     )
     return AnbimaCalendar(
-        ANBIMA_CALENDAR_VERSION,
+        ANBIMA_ALGORITHMIC_CALENDAR_VERSION,
         "public-algorithmic-reconstruction",
         None,
         date(start_year, 1, 1),
         date(end_year, 12, 31),
         holidays,
+        sum(len(names) for names in merged.values()),
     )
 
 
@@ -128,19 +142,32 @@ def _parse_date(value: object) -> date:
     raise ValueError(f"invalid holiday date: {value!r}")
 
 
+def _try_parse_date(value: object) -> date | None:
+    try:
+        return _parse_date(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _calendar_from_rows(
     rows: Iterable[Mapping[str, object]],
     *,
     version: str,
     source: str,
     sha256: str | None,
+    ignored_footer_start_row: int | None = None,
 ) -> AnbimaCalendar:
     merged: dict[date, list[str]] = {}
-    for row in rows:
-        holiday_date = _parse_date(row["Data"])
+    raw_rows_processed = 0
+    for row_number, row in enumerate(rows, start=2):
+        holiday_date = _try_parse_date(row["Data"])
+        if holiday_date is None:
+            ignored_footer_start_row = row_number
+            break
         name = str(row["Feriado"]).strip()
         if not name:
             raise ValueError("Feriado must not be empty")
+        raw_rows_processed += 1
         merged.setdefault(holiday_date, [])
         if name not in merged[holiday_date]:
             merged[holiday_date].append(name)
@@ -157,13 +184,15 @@ def _calendar_from_rows(
         holidays[0].reference_date,
         holidays[-1].reference_date,
         holidays,
+        raw_rows_processed,
+        ignored_footer_start_row,
     )
 
 
 def import_anbima_holidays_xls(
     path: str | Path,
     *,
-    calendar_version: str = ANBIMA_CALENDAR_VERSION,
+    calendar_version: str = ANBIMA_IMPORTED_CALENDAR_VERSION,
 ) -> AnbimaCalendar:
     """Importa .xls com colunas ``Data; Dia da Semana; Feriado``.
 
@@ -187,20 +216,26 @@ def import_anbima_holidays_xls(
         raise ValueError("holiday .xls must contain Data, Dia da Semana and Feriado")
     indexes = {header: headers.index(header) for header in required}
     rows = []
+    footer_start_row = None
     for row_index in range(1, sheet.nrows):
         excel_date = sheet.cell_value(row_index, indexes["Data"])
-        value = xlrd.xldate_as_datetime(excel_date, workbook.datemode)
+        try:
+            value = xlrd.xldate_as_datetime(excel_date, workbook.datemode)
+        except (TypeError, ValueError, xlrd.XLDateError):
+            footer_start_row = row_index + 1
+            break
         rows.append({"Data": value.date(), "Feriado": sheet.cell_value(row_index, indexes["Feriado"])})
     return _calendar_from_rows(
         rows,
         version=calendar_version,
         source=str(file_path),
         sha256=hashlib.sha256(raw).hexdigest(),
+        ignored_footer_start_row=footer_start_row,
     )
 
 
 def import_anbima_holidays_csv_fixture(
-    path: str | Path, *, calendar_version: str = ANBIMA_CALENDAR_VERSION
+    path: str | Path, *, calendar_version: str = ANBIMA_IMPORTED_CALENDAR_VERSION
 ) -> AnbimaCalendar:
     """Importador stdlib para fixture sintético com o mesmo esquema do .xls."""
 
