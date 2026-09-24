@@ -20,6 +20,21 @@ from .b3_accumulated import (
     calculate_b3_accumulated,
 )
 from .b3_csv import B3CsvImportError, import_b3_di_csv
+from .b3_history import (
+    B3_HISTORY_MANIFEST_VERSION,
+    B3_HISTORY_RECORD_VERSION,
+    B3HistoryConflictError,
+    B3HistoryError,
+    B3HistoryFileDigest,
+    B3HistoryFormatError,
+    B3HistoryManifest,
+    B3HistoricalRecord,
+    B3HistoryUnsortedError,
+    calculate_b3_accumulated_from_history,
+    consolidate_b3_history,
+    parse_b3_history_csv,
+    to_b3_rate_observations,
+)
 from .methodology import METHODOLOGY_VERSION, PRECISION_MODE_MAX
 from .use_case import calculate_factor_j
 from .validation import (
@@ -47,6 +62,19 @@ __all__ = [
     "InternalGapError",
     "B3AccumulatedError",
     "B3CsvImportError",
+    "B3HistoricalRecord",
+    "B3HistoryManifest",
+    "B3HistoryFileDigest",
+    "B3_HISTORY_RECORD_VERSION",
+    "B3_HISTORY_MANIFEST_VERSION",
+    "B3HistoryError",
+    "B3HistoryFormatError",
+    "B3HistoryUnsortedError",
+    "B3HistoryConflictError",
+    "consolidate_b3_history",
+    "parse_b3_history_csv",
+    "to_b3_rate_observations",
+    "calculate_b3_accumulated_from_history",
 ]
 
 __version__ = "0.1.0"
