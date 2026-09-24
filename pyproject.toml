@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cdi-factor-engine-br"
+version = "0.1.0"
+description = "Open, auditable and deterministic engine for Brazilian CDI factor calculations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+[tool.setuptools.packages.find]
+include = ["cdi_factor_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
