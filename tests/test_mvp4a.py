@@ -5,9 +5,8 @@ from pathlib import Path
 import pytest
 
 from cdi_factor_engine import (
-    ANBIMA_ALGORITHMIC_CALENDAR_VERSION,
+    ALGORITHMIC_CALENDAR_VERSION,
     ANBIMA_IMPORTED_CALENDAR_VERSION,
-    ANBIMA_CALENDAR_VERSION,
     flat_forward_extrapolate,
     flat_forward_extrapolate_curve,
     flat_forward_interpolate,
@@ -20,8 +19,7 @@ from cdi_factor_engine import (
 
 def test_anbima_calendar_is_independent_and_explicit():
     calendar = generate_anbima_calendar()
-    assert calendar.version == ANBIMA_ALGORITHMIC_CALENDAR_VERSION
-    assert ANBIMA_CALENDAR_VERSION == ANBIMA_ALGORITHMIC_CALENDAR_VERSION
+    assert calendar.version == ALGORITHMIC_CALENDAR_VERSION
     assert calendar.period_start == date(2001, 1, 1)
     assert calendar.period_end == date(2099, 12, 31)
     assert is_anbima_business_day(date(2026, 12, 31))
@@ -108,7 +106,14 @@ def test_official_anbima_workbook_is_auditable():
     from cdi_factor_engine import import_anbima_holidays_xls
 
     calendar = import_anbima_holidays_xls(OFFICIAL_XLS)
-    assert calendar.sha256
+    assert calendar.sha256 == (
+        "e3070152bfbdd733a27977adc82b799e"
+        "973d3ea003d2aa25b0e7e5bdae63aa17"
+    )
+    assert calendar.period_start == date(2001, 1, 1)
+    assert calendar.period_end == date(2099, 12, 25)
+    assert calendar.ignored_footer_start_row == 1266
+    assert calendar.version == ANBIMA_IMPORTED_CALENDAR_VERSION
     assert len(calendar.dates) == 1263
     assert calendar.raw_rows_processed == 1264
     collision = next(item for item in calendar.holidays if item.reference_date == date(2079, 4, 21))

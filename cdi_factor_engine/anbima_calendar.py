@@ -14,10 +14,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Mapping
 
-ANBIMA_ALGORITHMIC_CALENDAR_VERSION = "anbima-national-holidays-2001-2099-v2023"
+ALGORITHMIC_CALENDAR_VERSION = "brazil-national-holidays-algorithmic-v1"
 ANBIMA_IMPORTED_CALENDAR_VERSION = "anbima-national-holidays-imported-v1"
-# Compatibility alias for callers that used the generated-calendar constant.
-ANBIMA_CALENDAR_VERSION = ANBIMA_ALGORITHMIC_CALENDAR_VERSION
 
 
 def _easter_sunday(year: int) -> date:
@@ -106,7 +104,7 @@ def generate_anbima_calendar(
         for day, names in sorted(merged.items())
     )
     return AnbimaCalendar(
-        ANBIMA_ALGORITHMIC_CALENDAR_VERSION,
+        ALGORITHMIC_CALENDAR_VERSION,
         "public-algorithmic-reconstruction",
         None,
         date(start_year, 1, 1),
