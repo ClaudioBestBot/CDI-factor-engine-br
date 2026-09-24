@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -94,7 +95,7 @@ def test_b3_csv_importer_reads_local_format_and_validates_daily_rate(tmp_path):
     csv_path = tmp_path / "sample.csv"
     csv_path.write_text(
         "\ufeffTexto introdutório\nData referência;Média;Fator diário;Volume financeiro\n"
-        "24/09/2025;14,90;0,00055131;-\n",
+        "24/09/2025;14,90;1,00055131;-\n",
         encoding="utf-8",
     )
     assert import_b3_di_csv(csv_path) == [
@@ -115,3 +116,31 @@ def test_b3_csv_importer_rejects_no_results_and_daily_rate_mismatch(tmp_path):
     )
     with pytest.raises(B3CsvImportError, match="divergente"):
         import_b3_di_csv(invalid_path)
+
+
+LOCAL_B3_CSV = Path(__file__).parents[1] / "local-data" / "DI over-24-09-2025.csv"
+
+
+@pytest.mark.skipif(
+    not LOCAL_B3_CSV.exists(),
+    reason="fixture anual B3 local não publicado neste repositório",
+)
+def test_b3_official_local_annual_fixture():
+    observations = import_b3_di_csv(LOCAL_B3_CSV)
+    assert len(observations) == 251
+    assert observations[0].reference_date == date(2025, 9, 24)
+    assert observations[-1].reference_date == date(2026, 9, 23)
+
+    for percentual, expected in (
+        (Decimal("100.0000"), Decimal("1.14498907")),
+        (Decimal("114.0000"), Decimal("1.16689290")),
+    ):
+        result = calculate_b3_accumulated(
+            observations,
+            date(2025, 9, 24),
+            date(2026, 9, 24),
+            percentual,
+            data_version="local-b3-fixture",
+        )
+        assert result.observations == 251
+        assert result.final_factor_round8 == expected

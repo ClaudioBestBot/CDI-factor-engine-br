@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from .b3_accumulated import (
@@ -67,13 +67,16 @@ def import_b3_di_csv(path: str | Path) -> list[B3RateObservation]:
             ) from error
 
         annual_rate_percent = _parse_decimal(row["Média"], "Média")
-        reported_daily_rate = _parse_decimal(row["Fator diário"], "Fator diário")
+        reported_daily_factor = _parse_decimal(row["Fator diário"], "Fator diário")
         calculated_daily_rate = calculate_b3_daily_rate(annual_rate_percent)
-        if reported_daily_rate != calculated_daily_rate:
+        calculated_daily_factor = (Decimal(1) + calculated_daily_rate).quantize(
+            Decimal("0.00000001"), rounding=ROUND_HALF_UP
+        )
+        if reported_daily_factor != calculated_daily_factor:
             raise B3CsvImportError(
                 "Fator diário divergente em "
-                f"{reference_date.isoformat()}: CSV={reported_daily_rate}, "
-                f"recalculado={calculated_daily_rate}"
+                f"{reference_date.isoformat()}: CSV={reported_daily_factor}, "
+                f"recalculado={calculated_daily_factor}"
             )
         observations.append(B3RateObservation(reference_date, annual_rate_percent))
 
