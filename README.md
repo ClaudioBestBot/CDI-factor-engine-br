@@ -188,6 +188,28 @@ integração externa.
   ao caso de uso estritamente ordenada por data crescente e sem
   duplicatas; ela **não é reordenada nem deduplicada silenciosamente**.
 
+## MVP 4A: calendário ANBIMA e Flat Forward
+
+O MVP 4A adiciona o calendário algorítmico versionado
+`brazil-national-holidays-algorithmic-v1` e a interpolação/extrapolação Flat
+Forward 252. Trata-se de uma implementação independente baseada em metodologia
+pública (Manual de Curvas B3, item 1.4.2, e lista pública de feriados
+nacionais), sem afiliação, certificação ou endosso da B3 ou da ANBIMA.
+
+O calendário de 2001 a 2099 é uma reconstrução algorítmica pública e pode
+divergir da fonte oficial até ser validado pelo usuário. O importador
+`import_anbima_holidays_xls` aceita a planilha local real com as colunas
+`Data`, `Dia da Semana` e `Feriado`, registra SHA-256, período e versão; a
+dependência `xlrd` é opcional (`pip install .[xls]`). Os arquivos oficiais
+`.xls` e o PDF do manual são mantidos apenas localmente pelo usuário e nunca
+são versionados. O fixture de testes é sintético. O calendário está sujeito a
+versionamento e futuras atualizações legais, inclusive novos feriados criados
+por lei. A versão `brazil-national-holidays-algorithmic-v1` identifica a
+reconstrução gerada pelo motor (deliberadamente sem o prefixo `anbima`, para
+não sugerir certificação oficial); arquivos efetivamente importados de uma
+planilha oficial usam separadamente a versão de esquema
+`anbima-national-holidays-imported-v1`.
+
 ## Calendário aproximado (não oficial)
 
 O calendário de dias úteis usado para identificar finais de semana,

@@ -43,6 +43,22 @@ from .validation import (
     SeriesValidationError,
     UnsortedSeriesError,
 )
+from .anbima_calendar import (
+    ALGORITHMIC_CALENDAR_VERSION,
+    ANBIMA_IMPORTED_CALENDAR_VERSION,
+    AnbimaCalendar,
+    AnbimaHoliday,
+    generate_anbima_calendar,
+    import_anbima_holidays_csv_fixture,
+    import_anbima_holidays_xls,
+    is_anbima_business_day,
+)
+from .flat_forward import (
+    flat_forward_extrapolate,
+    flat_forward_extrapolate_curve,
+    flat_forward_interpolate,
+    rounded_rate_percent,
+)
 
 __all__ = [
     "FactorJRequest",
@@ -75,6 +91,18 @@ __all__ = [
     "parse_b3_history_csv",
     "to_b3_rate_observations",
     "calculate_b3_accumulated_from_history",
+    "ALGORITHMIC_CALENDAR_VERSION",
+    "ANBIMA_IMPORTED_CALENDAR_VERSION",
+    "AnbimaCalendar",
+    "AnbimaHoliday",
+    "generate_anbima_calendar",
+    "import_anbima_holidays_xls",
+    "import_anbima_holidays_csv_fixture",
+    "is_anbima_business_day",
+    "flat_forward_interpolate",
+    "flat_forward_extrapolate",
+    "flat_forward_extrapolate_curve",
+    "rounded_rate_percent",
 ]
 
 __version__ = "0.1.0"
