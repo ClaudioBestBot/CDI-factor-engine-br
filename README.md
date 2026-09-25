@@ -207,6 +207,8 @@ construção devem declarar o mesmo `source_mode` solicitado. Os códigos são
 canônicos sem o prefixo `BMF:` (`DI1V26` e `BMF:DI1V26` são a mesma
 identidade); códigos manuais ausentes no snapshot são rejeitados.
 
+Contratos DI1 cujo DU calculado seja menor ou igual a zero sao sempre excluidos com razao `non_positive_du`, permanecem no manifesto e geram um aviso de qualidade. Essa regra tem prioridade sobre `manual_codes` e `mandatory_codes`, pois nenhum vertice DI1 com DU nao positivo pode participar da curva.
+
 A seleção de vértices é determinística: pode receber códigos manuais,
 códigos obrigatórios e limites explícitos de contratos negociados e negócios.
 Nenhum limite financeiro é presumido. Cada contrato recebido fica no
