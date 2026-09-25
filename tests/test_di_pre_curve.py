@@ -331,3 +331,41 @@ def test_cdi_validation(kwargs, message):
 def test_di1_numeric_validation(field, value):
     with pytest.raises(DI1FormatError, match=field):
         contract("DI1V26", date(2026, 10, 1), **{field: value})
+
+
+def test_non_positive_du_is_excluded_and_reported_even_when_mandatory():
+    invalid = contract("DI1F24", SNAPSHOT.date())
+    valid = contract("DI1F26", date(2026, 1, 2))
+    curve = build_di_pre_curve(
+        [invalid, valid], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+        mandatory_codes=["DI1F24"],
+        cdi_rate=Decimal("9.5"), cdi_reference_date=SNAPSHOT.date(),
+        cdi_origin="manual-input",
+    )
+    report = next(item for item in curve.manifest.selection_reports if item.contract_code == "DI1F24")
+    assert not report.selected and report.excluded
+    assert report.reason == "non_positive_du"
+    assert report.du == 0
+    assert all(vertex.origin != "di1" or vertex.du > 0 for vertex in curve.vertices)
+    assert curve.vertices[0].origin == "cdi" and curve.vertices[0].du == 1
+    assert any("DI1F24" in warning and "non-positive DU" in warning for warning in curve.manifest.quality_warnings)
+    assert len(curve.manifest.selection_reports) == 2
+
+
+def test_non_positive_du_without_cdi_does_not_create_di1_vertex():
+    invalid = contract("DI1F24", SNAPSHOT.date())
+    curve = build_di_pre_curve(
+        [invalid], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+        manual_codes=["BMF:DI1F24"],
+    )
+    assert curve.vertices == ()
+    assert curve.manifest.selection_reports[0].reason == "non_positive_du"
+
+
+def test_maturity_before_snapshot_is_non_positive_du_exclusion():
+    invalid = contract("DI1Z23", date(2023, 12, 29))
+    curve = build_di_pre_curve(
+        [invalid], source_mode=DI1SourceMode.INDICATIVE_INTRADAY_LAST,
+    )
+    assert curve.manifest.selection_reports[0].reason == "non_positive_du"
+    assert curve.manifest.selection_reports[0].excluded

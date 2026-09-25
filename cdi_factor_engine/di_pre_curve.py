@@ -43,8 +43,10 @@ def business_days_between_snapshot_and_maturity(
     snapshot_date: date, maturity_date: date, calendar: AnbimaCalendar | None = None
 ) -> int:
     """Count ANBIMA business days in ``[snapshot_date, maturity_date)``."""
-    if maturity_date < snapshot_date:
-        raise ValueError("maturity_date cannot precede snapshot_date")
+    # Non-positive maturity intervals are reported as DU=0 and handled by
+    # curve selection as an explicit exclusion, never as a rate vertex.
+    if maturity_date <= snapshot_date:
+        return 0
     current, count = snapshot_date, 0
     while current < maturity_date:
         if is_anbima_business_day(current, calendar):
@@ -233,6 +235,12 @@ def build_di_pre_curve(
     source_sha256: str | None = None,
     snapshot_source: str | None = None,
 ) -> DI1Curve:
+    """Build a curve; DI1 contracts with DU <= 0 are always excluded.
+
+    The ``non_positive_du`` check has priority over manual and mandatory
+    selection, preserving the record in the audit report without creating a
+    non-positive DI1 vertex.
+    """
     mode = DI1SourceMode(source_mode)
     records = tuple(contracts)
     if not records:
@@ -283,9 +291,9 @@ def build_di_pre_curve(
         code = record.contract_code.upper()
         du = business_days_between_snapshot_and_maturity(snapshot.date(), record.maturity_date, calendar)
         rate = extract_rate(record, mode)
-        reason = None
+        reason = "non_positive_du" if du <= 0 else None
         forced = code in mandatory
-        if rate is None:
+        if reason is None and rate is None:
             reason = "missing_rate_for_mode"
         elif manual is not None and code not in manual and not forced:
             reason = "not_in_manual_selection"
@@ -326,7 +334,12 @@ def build_di_pre_curve(
         if report.selected and report.contract_code in mandatory
         and ((min_traded_contracts is not None and (report.traded_contracts is None or report.traded_contracts < min_traded_contracts))
              or (min_trade_count is not None and (report.trade_count is None or report.trade_count < min_trade_count)))
+    ) + tuple(
+        f"contract {report.contract_code} excluded: non-positive DU ({report.du})"
+        for report in reports
+        if report.reason == "non_positive_du"
     )
+    #
     manifest = DI1CurveManifest(
         DI_PRE_CURVE_METHODOLOGY_VERSION,
         calendar.version if calendar else ALGORITHMIC_CALENDAR_VERSION,
